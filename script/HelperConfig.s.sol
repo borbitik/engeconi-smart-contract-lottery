@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import {Script} from "forge-std/Script.sol";
 import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
+import {LinkToken} from "../test/mocks/LinkToken.sol";
 
 abstract contract ConstantCodes {
     uint256 public constant SEPOLIA_CHAIN_ID = 11155111;
@@ -45,7 +46,7 @@ contract HelperConfig is ConstantCodes, Script {
             intervalTime: 30, //seconds
             callbackGasLimit: 500000,
             vrfCoordinator: 0x9DdfaCa8183c41ad55329BdeeD9F6A8d53168B1B,
-            link:0x779877A7B0D9E8603169DdbD7836e478b4624789
+            link: 0x779877A7B0D9E8603169DdbD7836e478b4624789
         });
     }
 
@@ -56,7 +57,7 @@ contract HelperConfig is ConstantCodes, Script {
 
         vm.startBroadcast();
         VRFCoordinatorV2_5Mock vrfCoordinator = new VRFCoordinatorV2_5Mock(BASE_FEE, GAS_PRICE_LINK, WEI_PER_UNIT_LINK);
-
+        LinkToken linktoken = new LinkToken();
         vm.stopBroadcast();
         localNetworkConfig = NetworkConfig({
             entranceFee: 0.1 ether,
@@ -64,7 +65,8 @@ contract HelperConfig is ConstantCodes, Script {
             subcriptionId: 0,
             intervalTime: 30, //seconds
             callbackGasLimit: 500000,
-            vrfCoordinator: address(vrfCoordinator)
+            vrfCoordinator: address(vrfCoordinator),
+            link: address(linktoken)
         });
         return localNetworkConfig;
     }

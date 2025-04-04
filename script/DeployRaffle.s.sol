@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {Script, console} from "forge-std/Script.sol";
 import {Raffle} from "../src/Raffle.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
-import {CreateSubscription} from "./Interactions.s.sol";
+import {CreateSubscription, FundSubscription, AddConsummer} from "./Interactions.s.sol";
 
 contract DeployRaffle is Script {
     function run() external returns (Raffle, HelperConfig) {
@@ -17,10 +17,14 @@ contract DeployRaffle is Script {
         address vrfCoordinator = networkConfig.vrfCoordinator;
 
         if (networkConfig.subcriptionId == 0) {
+            //create subscription
             CreateSubscription createSubscription = new CreateSubscription();
             (uint256 subId,) = createSubscription.createSubscription(vrfCoordinator);
             networkConfig.subcriptionId = subId;
             networkConfig.vrfCoordinator = vrfCoordinator;
+            //fund it
+            FundSubscription fundSubscription = new FundSubscription();
+            fundSubscription.fundSubscription(subId, vrfCoordinator, networkConfig.link);
         }
 
         vm.startBroadcast();
@@ -34,6 +38,10 @@ contract DeployRaffle is Script {
         );
 
         vm.stopBroadcast();
+
+        // after all add consumer
+        AddConsummer addConsummer = new AddConsummer();
+        addConsummer.addConsumer(networkConfig.subcriptionId,address(raffle),networkConfig.vrfCoordinator);
         return (raffle, helperConfig);
     }
 }

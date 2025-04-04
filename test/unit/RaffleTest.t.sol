@@ -89,4 +89,16 @@ contract RaffleTest is Test {
         vm.expectRevert(Raffle.Raffle__RaffleNotOpen.selector);
         raffle.enterRaffle{value: entranceFee}();
     }
+
+    function testCheckUpKeepRetunsFalsesIfBlocckTimeNotPassed() public {
+        //Arrange
+        vm.prank(PLAYER);
+        raffle.enterRaffle{value: entranceFee}();
+
+        //Act
+        vm.expectRevert(abi.encodeWithSelector(Raffle.Raffle__UpkeepNotNeeded.selector,address(raffle).balance, 1, 0, 1));
+         raffle.performUpkeep("");
+
+    
+    }
 }
