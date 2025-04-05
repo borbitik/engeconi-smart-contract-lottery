@@ -3,7 +3,7 @@ cache/
 out/
 
 lib/
-/broadcast
+broadcast/
 
 # Ignores development broadcast logs
 !/broadcast
