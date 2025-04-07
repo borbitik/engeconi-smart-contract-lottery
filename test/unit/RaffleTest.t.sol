@@ -5,6 +5,11 @@ import {Test} from "forge-std/Test.sol";
 import {Raffle} from "../../src/Raffle.sol";
 import {DeployRaffle} from "../../script/DeployRaffle.s.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
+import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
+import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
+import {console} from "forge-std/Script.sol";
+import {Vm} from "forge-std/Vm.sol";
+import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
 
 contract RaffleTest is Test {
     uint256 entranceFee;
@@ -25,7 +30,8 @@ contract RaffleTest is Test {
 
     function setUp() public {
         (raffle, helperConfig) = new DeployRaffle().run();
-        HelperConfig.NetworkConfig memory networkConfig = helperConfig.getConfig();
+        HelperConfig.NetworkConfig memory networkConfig = helperConfig
+            .getConfig();
         entranceFee = networkConfig.entranceFee;
         keyHash = networkConfig.keyHash;
         subcriptionId = networkConfig.subcriptionId;
@@ -36,7 +42,10 @@ contract RaffleTest is Test {
     }
 
     function testRaffleInitializeInOpenState() public {
-        assertTrue(raffle.getRaffleState() == Raffle.RaffleState.OPEN, "Raffle should be in open state");
+        assertTrue(
+            raffle.getRaffleState() == Raffle.RaffleState.OPEN,
+            "Raffle should be in open state"
+        );
     }
 
     function testRaffleDeployMent() public view {
@@ -89,16 +98,138 @@ contract RaffleTest is Test {
         vm.expectRevert(Raffle.Raffle__RaffleNotOpen.selector);
         raffle.enterRaffle{value: entranceFee}();
     }
+    /*
+        TESTS CHEKUPKEEP
+    */
 
     function testCheckUpKeepRetunsFalsesIfBlocckTimeNotPassed() public {
         //Arrange
         vm.prank(PLAYER);
         raffle.enterRaffle{value: entranceFee}();
-
+        vm.warp(block.timestamp + intervalTime - 1);
         //Act
-        vm.expectRevert(abi.encodeWithSelector(Raffle.Raffle__UpkeepNotNeeded.selector,address(raffle).balance, 1, 0, 1));
-         raffle.performUpkeep("");
+        (bool upkeepNeed, ) = raffle.checkUpkeep("");
 
-    
+        //Assert
+        assertFalse(upkeepNeed, "Upkeep should not be needed");
+    }
+
+    function testRaffleShouldBeOpen() public raffleEntered {
+        raffle.enterRaffle{value: entranceFee}();
+
+        //Act/assert
+        raffle.performUpkeep("");
+        (bool upkeepNeed, ) = raffle.checkUpkeep("");
+        assertFalse(upkeepNeed, "Upkeep should not be needed");
+    }
+
+    /*
+    PERFORM UPKEEP TESTS
+    */
+
+    function testCannotPerformUpkeepIfCheckUpKeepIsFalse() public {
+        //Arrange
+        uint256 currentBalance = 0;
+        uint256 playerCount = 0;
+        Raffle.RaffleState raffleState = raffle.getRaffleState();
+        vm.prank(PLAYER);
+        raffle.enterRaffle{value: entranceFee}();
+        currentBalance = currentBalance + entranceFee;
+        playerCount = playerCount + 1;
+
+        //Act/Assert
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Raffle.Raffle__UpkeepNotNeeded.selector,
+                currentBalance,
+                playerCount,
+                uint256(raffleState),
+                raffle.getLastTimeStamp()
+            )
+        );
+        raffle.performUpkeep("");
+    }
+
+    function testPerformUpkeep() public raffleEntered {
+        //Arrange
+        raffle.enterRaffle{value: entranceFee}();
+        vm.recordLogs();
+        //Act
+        raffle.performUpkeep("");
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+
+        bytes32 requestId = entries[1].topics[1];
+        //assert
+        Raffle.RaffleState raffleState = raffle.getRaffleState();
+        assertTrue(
+            raffleState == Raffle.RaffleState.CALCULATING,
+            "Raffle should be in calculating state"
+        );
+        assertTrue(uint256(requestId) > 0, "RequestId should not be zero");
+    }
+
+    modifier raffleEntered() {
+        vm.prank(PLAYER);
+        raffle.enterRaffle{value: entranceFee}();
+        vm.warp(block.timestamp + intervalTime + 1);
+        vm.roll(block.number + 1);
+        _;
+    }
+
+    /*
+        TESTS FULFILL RANDOM WORDS
+    */
+
+    function testFullfilRandomCanBeCallOnlyAfterPerformUpKeep(
+        uint256 requestId
+    ) public raffleEntered {
+        //Arrange/Act/Assert
+        vm.expectRevert(VRFCoordinatorV2_5Mock.InvalidRequest.selector);
+        VRFCoordinatorV2_5Mock(vrfCoordinator).fulfillRandomWords(
+            requestId,
+            address(raffle)
+        );
+    }
+
+    function testFulfillRandomWordsPicksAWinnerResetsAndSendsMoney()
+        public
+        raffleEntered
+    {
+        // Arrange
+        uint256 additionalEntrants = 5;
+        uint256 startingIndex = 1;
+        
+        // Fund and enter additional players
+        for (uint256 i = startingIndex; i <= additionalEntrants; i++) {
+            address player = address(uint160(i));
+            hoax(player, STARTING_PLAYERS_BALANCE);
+            raffle.enterRaffle{value: entranceFee}();
+        }
+        uint256 afterRaffleEntranceBalance = STARTING_PLAYERS_BALANCE - entranceFee;
+        
+        uint256 totalPrize = entranceFee * (additionalEntrants + 1); // +1 for initial player
+        uint256 startingTimestamp = raffle.getLastTimeStamp();
+
+        // Act
+        vm.recordLogs();
+        raffle.performUpkeep("");
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        bytes32 requestId = entries[1].topics[1];
+
+        VRFCoordinatorV2_5Mock(vrfCoordinator).fulfillRandomWords(
+            uint256(requestId),
+            address(raffle)
+        );
+
+        // Assert
+        address recentWinner = raffle.getRecentWinner();
+        Raffle.RaffleState raffleState = raffle.getRaffleState();
+        uint256 endingTimestamp = raffle.getLastTimeStamp();
+
+        assert(recentWinner != address(0));
+        assert(raffle.getPlayerCount() == 0);
+        assert(raffleState == Raffle.RaffleState.OPEN);
+        assert(endingTimestamp > startingTimestamp);
+        assertEq(recentWinner.balance, totalPrize + afterRaffleEntranceBalance);
     }
 }

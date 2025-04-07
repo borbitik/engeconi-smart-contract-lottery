@@ -44,7 +44,7 @@ contract FundSubscription is Script, ConstantCodes {
         
         if (block.chainid == ConstantCodes.ANVIL_CHAIN_ID) {
             vm.startBroadcast();
-            VRFCoordinatorV2_5Mock(vrfCoordinator).fundSubscription(subId, LINK_AMOUNT);
+            VRFCoordinatorV2_5Mock(vrfCoordinator).fundSubscription(subId, LINK_AMOUNT * 10000);
             vm.stopBroadcast();
         } else {
             vm.startBroadcast();

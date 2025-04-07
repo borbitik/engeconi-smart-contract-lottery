@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
+import {console} from "forge-std/Script.sol";
 
 /**
  * @title a simple raffle contract
@@ -42,6 +43,7 @@ contract Raffle is VRFConsumerBaseV2Plus {
     /* events */
     event RaffleEntered(address indexed player);
     event PickedWinner(address indexed winner);
+    event RequestCreated(uint256 indexed requestId);
 
     constructor(
         uint256 entranceFee,
@@ -101,7 +103,7 @@ contract Raffle is VRFConsumerBaseV2Plus {
 
         //Interactions
         /* pick a random winner */
-        s_vrfCoordinator.requestRandomWords(
+       uint256 requestId =  s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
                 keyHash: i_keyHash,
                 subId: i_subcriptionId,
@@ -111,12 +113,14 @@ contract Raffle is VRFConsumerBaseV2Plus {
                 extraArgs: VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1(false))
             })
         );
+        emit RequestCreated(requestId);
     }
 
     function fulfillRandomWords(uint256, /*requestId*/ uint256[] calldata randomWords) internal virtual override {
         //checks
 
         //effect (internal Contract state)
+        console.log("Random number: %s", randomWords[0]);
         uint256 indexOfWinner = randomWords[0] % s_players.length;
         s_recentWinner = s_players[indexOfWinner];
         s_raffleState = RaffleState.OPEN;
@@ -148,5 +152,13 @@ contract Raffle is VRFConsumerBaseV2Plus {
 
     function getPlayers(uint256 index) public view returns (address) {
         return s_players[index];
+    }
+
+    function getLastTimeStamp() public view returns (uint256) {
+        return s_lastTimeStamp;
+    }
+
+    function getRecentWinner() public view returns (address) {
+        return s_recentWinner;
     }
 }
